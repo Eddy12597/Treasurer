@@ -1,15 +1,10 @@
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
+from contextman import NHSGoogleSheets
 
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("key_file.json", scope) # type: ignore
-client = gspread.authorize(creds) # type: ignore
 
-workbook = client.open("NHS Treasurer 2026")
-proposals_sheet = workbook.worksheet("Proposals")
-transactions_sheet = workbook.worksheet("Transactions")
-
-proposals_df = pd.DataFrame(proposals_sheet.get_all_records())
-
-print(proposals_df.head())
+with NHSGoogleSheets("NHS Treasurer 2026") as sheets:
+    proposals_df = sheets.get_df("Proposals")
+    print(proposals_df.head())
+    
