@@ -7,8 +7,8 @@ from hashlib import sha256
 from dotenv import load_dotenv
 import os
 import smtplib
-from functions import get_stats
-from utils import send_email
+from functions import get_stats_and_upcoming_events
+from utils import send_email, convert_numpy_types
 
 load_dotenv()
 app = Flask(__name__)
@@ -18,16 +18,6 @@ CORS(app, expose_headers=['Content-Disposition', 'Content-Type'])
 # for reference
 cols = ["event_name", "event_chairs", "contact_email", "event_start_date", "event_type", "itemized_budget", "expected_revenue", "justification", "purpose", "nhs_fund_reason", "estimated_attendance", "vendors_suppliers", "reimbursement_contact",
         "PROP_ID", "NOTES", "APPSTATUS"]
-
-def initialize_smtp():
-    server = smtplib.SMTP('smtp.office365.com', 587)
-    server.starttls()
-    pwd = os.getenv("EMAIL_PWD")
-    if pwd is None:
-        raise RuntimeError("Password for email not configured.")
-    server.login("eddy12597@163.com", pwd)
-    print("Login Successful")
-    return server
 
 def get_email_body(name: str, propid: str) -> str:
     return """<div style="margin: 20px 50px 20px 50px; display: flex; flex-direction: column;">
@@ -82,18 +72,21 @@ def handle_submit_budget_proposal():
         propid = proposals_df.iloc[-1]["PROP_ID"]
         
     try:
-        server = initialize_smtp()
-        send_email(recipient, get_email_body(name, propid), server)
+        send_email(recipient, get_email_body(name, propid))
     except Exception as e:
         return f"Server Error: {e}", 500
     
     return 'Success', 200
 
-@app.route("/get-stats", methods=['GET'])
+@app.route("/get-stats-and-upcoming-events", methods=['GET'])
 def stats():
     # frontend needs current balance, num pending (prop, reimbursements), num approved (prop, reimbursements)
-    data = get_stats()
-    return data, 200
+    try:
+        data = get_stats_and_upcoming_events()
+        return data, 200
+    except Exception as e:
+        print(f"Exception: {e}")
+        return str(e), 500
 
 
 """
@@ -108,7 +101,7 @@ def stats():
 """
 
 
-@app.route("/get-logs", methods=['GET'])
+@app.route("/get-logs", methods=['GET', 'POST'])
 def get_logs():
     with NHSGoogleSheets("NHS Treasurer 2026") as sheets:
         transactions_df = sheets.get_df("Transactions")
@@ -116,9 +109,9 @@ def get_logs():
     return {
         "data": data
     }, 200
-        
 
 
 
-# if __name__ == "__main__":
-#     app.run(debug=True)
+
+if __name__ == "__main__":
+    app.run(debug=True)

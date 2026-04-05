@@ -8,79 +8,139 @@ import smtplib
 
 from colorama import Style, Fore
 from pathlib import Path
+from emailhandler import EmailHandler
+import numpy as np
 
 DEBUG=False
 
-def html_to_markdown(html: str) -> str:
-    """Convert HTML email template into markdown/plaintext preview."""
-    text = html
-    text = re.sub(r"<\s*(p|div|br)\s*/?>", "\n", text, flags=re.I)
-    text = re.sub(r"<\s*b\s*>(.*?)<\s*/b\s*>", r"**\1**", text, flags=re.I)
-    text = re.sub(r'<a\s+href="(.*?)">(.*?)</a>', r"[\2](\1)", text, flags=re.I)
-    text = re.sub(r"<(style|script).*?>.*?</\1>", "", text, flags=re.I | re.S)
-    text = re.sub(r"<[^>]+>", "", text)
-    text = unescape(text)
-    text = re.sub(r"\n\s*\n\s*", "\n\n", text)
-    text = re.sub(r"[ \t]+", " ", text)
-    text = text.strip()
-
-    return text
-
 type html_str=str
 
-def send_email(to: str, body_html: html_str, server: smtplib.SMTP | None, subject: str = "NHS Proposal Confirmation", sender: str = "eddy12597@163.com", attachments: list[str] | None = None) -> bool:
-    body_text = html_to_markdown(body_html)
-    msg = MIMEMultipart("alternative")
-    msg['Subject'] = subject
-    msg['From'] = sender
-    msg['To'] = to
-    msg['Cc'] = "eddy12597@163.com"
+def convert_numpy_types(obj):
+    if isinstance(obj, (np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: convert_numpy_types(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [convert_numpy_types(item) for item in obj]
+    return obj
 
-    msg.attach(MIMEText(body_text, "plain", "utf-8"))
-    msg.attach(MIMEText(body_html, "html", "utf-8"))
+def send_email(to: str, body_html: html_str, server: smtplib.SMTP | None = None, subject: str = "NHS Proposal Confirmation", sender: str = "eddy12597@163.com", attachments: list[str] | None = None) -> bool:
+    handler = EmailHandler()
+    if server is not None:
+        return handler.send_email(to, body_html, subject, sender, attachments, debug=False)
+    return handler.send_email(to, body_html, subject, sender, attachments, debug=True)
+
+# pyright: ignore[reportUnusedExpression]
+
+import sys
+from datetime import datetime, timezone
+import functools
+from colorama import Fore, Style
+import html2text
+
+class _flush_t:
+    def __init__(self, content: str = "") -> None:
+        self.content = content
+
+class Lvl:
+    INFO = info = Info = f"[INFO] "
+    WARN = warn = Warn = f"[WARN] "
+    FATAL = fatal = Fatal = f"[FATAL] "
+
+flush = _flush_t()
+endl = _flush_t(content="\n")
+
+class TeeLogger:
+    def __init__(self, *files) -> None:
+        if len(files) == 0:
+            files = [sys.stdout]
+        self.files = files
+        self.content: str = ""
+        self.raise_afterward = False
     
-    if attachments:
-        for f in attachments:
+    def __lshift__(self, other) -> 'TeeLogger':
+        if isinstance(other, _flush_t):
+            for f in self.files:
+                f.write(f"[{datetime.now(timezone.utc).isoformat()}] ")
+                f.write(self.content)
+                
+                f.write(other.content)
+                f.flush()
+            self.content = ""
+            if self.raise_afterward:
+                raise RuntimeError(self.content)
+            else:
+                return self
+        elif isinstance(other, Lvl):
+            if other == Lvl.FATAL:
+                self.raise_afterward = True
+        self.content += other # type: ignore
+        return self
+    
+log = TeeLogger(sys.stdout, open("./app.log", "w", encoding="utf-8"))
+
+def Log(_func=None, *, logger=log):
+    """Decorator factory that works with or without parentheses"""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            logger << Lvl.INFO << f"Function {func.__name__} called with {args}{f" and {kwargs}" if kwargs else ""}" << endl # pyright: ignore[reportUnusedExpression]
+            
             try:
-                with open(f, "rb") as attachment:
-                    part = MIMEBase('application', 'octet-stream')
-                    part.set_payload(attachment.read())
-                    encoders.encode_base64(part)
-                    part.add_header('Content-Disposition', f'attachment; filename= {f}')
-                    msg.attach(part)
-            except FileNotFoundError:
-                print(f"{Fore.RED}File {f} not found.{Style.RESET_ALL}")
-                if input("Skip? [Y/n]") in ("n", "no", "0"):
-                    raise SystemExit
+                result = func(*args, **kwargs)
+            except Exception as e:
+                logger << Lvl.FATAL << f"Function {func.__name__} raised an error: {e}" << endl # pyright: ignore[reportUnusedExpression]
+                raise
+            
+            logger << Lvl.INFO << f"Function {func.__name__} returned: {result}" << endl # pyright: ignore[reportUnusedExpression]
+            return result
+        return wrapper
     
-    print(f"{Fore.MAGENTA}Sending email to {to}:{Style.RESET_ALL}\n---\n{Style.BRIGHT}Subject: {subject}{Style.RESET_ALL}\n\nPreview:\n\n{body_text}\n")
-    
-    if DEBUG or server is None:
-        outbox_dir = Path("./outbox")
-        outbox_dir.mkdir(exist_ok=True)
-        outbox_file = outbox_dir / f"{to.replace('@','_at_')}.eml"
-        with open(outbox_file, "w", encoding="utf-8") as f:
-            f.write(msg.as_string())
-        print(f"{Fore.GREEN}Saved to outbox: {outbox_file}{Style.RESET_ALL}")
-        return True 
+    # Handle both @Log and @Log() syntax
+    if _func is None:
+        # Called with parentheses or with arguments: @Log() or @Log(logger=...)
+        return decorator
+    else:
+        # Called without parentheses: @Log
+        return decorator(_func)
 
-    # confirm = input("Send this email? [Y/n] ").lower().strip()
-    confirm = "y"
-    if confirm != "n":
-        try:
-            server.send_message(msg)
-            print(f"{Fore.GREEN}Email sent!{Style.RESET_ALL}")
-            return True
-        except smtplib.SMTPException as e:
-            print(f"{Fore.RED}Error: {e}{Style.RESET_ALL}")
-            choice = input(f"{Fore.YELLOW}Email failed. [S]kip, [R]etry, [A]bort? ").lower().strip()
-            if choice == 'r':
-                try:
-                    server.send_message(msg)
-                    return True
-                except:
-                    return False
-            elif choice == 'a':
-                raise SystemExit
-            return False
-    return False
+
+# Similarity
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process
+
+def similarity(str1: str, str2: str) -> float:
+    def jaccard_similarity(str1, str2):
+        set1 = set(str1.split())
+        set2 = set(str2.split())
+        intersection = len(set1.intersection(set2))
+        union = len(set1.union(set2))
+        return intersection / union if union != 0 else 0
+    return (jaccard_similarity(str1, str2) + fuzz.ratio(str1, str2))/2
+
+
+import tkinter as tk
+from itertools import cycle
+
+class TextSpinner:
+    def __init__(self, parent):
+        self.label = tk.Label(parent, text="", font=("Courier", 14))
+        self.label.pack(pady=20)
+        
+        # Different spinner character sets
+        # self.spinner_chars = cycle(['|', '/', '-', '\\'])
+        self.spinner_chars = cycle(['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'])
+        # or: cycle(['◐', '◓', '◑', '◒'])
+        # or: cycle(['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'])
+        
+    def start(self):
+        self.update_spinner()
+        
+    def update_spinner(self):
+        char = next(self.spinner_chars)
+        self.label.config(text=f"Loading {char}")
+        self.label.after(100, self.update_spinner)  # Update every 100ms
