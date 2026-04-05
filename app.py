@@ -20,5 +20,5 @@ def handle_submit_budget_proposal():
     prop = budget_proposal.BudgetProposal.from_dict(data)
     return 'Success', 200
 
-if __name__ == "__main__":
-    app.run(debug=True)
+# if __name__ == "__main__":
+#     app.run(debug=True)
