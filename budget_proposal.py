@@ -14,8 +14,9 @@ class EventType(Enum):
     THEME_BASED="THEME_BASED"
     OTHER="OTHER"
 
-
 class BudgetProposal:
+    latestID: int = 0
+
     def __init__(self,
                  # event info 
                  event_name: str, event_chairs: list[str], contact_email: str, event_start_date: str, event_type: EventType,
@@ -67,3 +68,61 @@ class BudgetProposal:
             itemized_budget, expected_revenue,
             justification, purpose, nhs_fund_reason,
             estimated_attendance, vendors_suppliers, reimbursement_contact)
+
+    def _safe_str(self, value) -> str:
+            """Convert value to string, handling None and edge cases."""
+            if value is None:
+                return ""
+            if isinstance(value, float):
+                # Handle NaN, Infinity
+                if str(value) in ('nan', 'inf', '-inf'):
+                    return ""
+                # Format floats to avoid excessive decimals
+                return f"{value:.2f}" if value == int(value) else str(value)
+            if isinstance(value, Enum):
+                return value.value
+            if isinstance(value, (list, dict)):
+                # Use JSON-like string representation for complex types
+                import json
+                return json.dumps(value, ensure_ascii=False)
+            return str(value)
+        
+    def _escape_csv_field(self, field: str) -> str:
+        """
+        Escape a field for CSV output:
+        - Wrap in quotes if contains comma, newline, or double quote
+        - Escape double quotes by doubling them
+        """
+        if not field:
+            return field
+        
+        needs_escape = any(char in field for char in [',', '"', '\n', '\r'])
+        
+        if needs_escape:
+            field = field.replace('"', '""')
+            return f'"{field}"'
+        
+        return field
+
+    def to_row(self) -> str:
+        fields = [
+            self._safe_str(self.event_name),
+            self._safe_str(self.event_chairs),
+            self._safe_str(self.contact_email),
+            self._safe_str(self.event_start_date),
+            self._safe_str(self.event_type),
+            self._safe_str(self.itemized_budget),
+            self._safe_str(self.expected_revenue),
+            self._safe_str(self.justification),
+            self._safe_str(self.purpose),
+            self._safe_str(self.nhs_fund_reason),
+            self._safe_str(self.estimated_attendance),
+            self._safe_str(self.vendors_suppliers),
+            self._safe_str(self.reimbursement_contact),
+            str(BudgetProposal.latestID),
+            "",
+            "0" # unapproved by default
+        ]
+        
+        # Apply CSV escaping to each field
+        return ",".join([self._escape_csv_field(field) for field in fields])
