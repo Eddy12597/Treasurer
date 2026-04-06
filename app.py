@@ -10,8 +10,12 @@ import smtplib
 from functions import get_stats_and_upcoming_events
 from utils import send_email, convert_numpy_types
 import json
+import sys
 
-load_dotenv()
+if 'win' not in sys.platform:
+    load_dotenv(dotenv_path="/home/eddy12598/Treasurer/.env")
+else:
+    load_dotenv()
 app = Flask(__name__)
 
 CORS(app, resources={
