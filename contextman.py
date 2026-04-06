@@ -46,7 +46,7 @@ class NHSGoogleSheets:
         self.data[sheet_name] = df.copy()
         # Don't write yet — wait for __exit__
     
-    def append_row(self, sheet_name, row_data):
+    def append_row(self, sheet_name, row_data: list):
         """Append a row (immediate write)"""
         self.sheets[sheet_name].append_row(row_data)
         # Also update local cache

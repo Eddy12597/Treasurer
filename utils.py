@@ -28,11 +28,9 @@ def convert_numpy_types(obj):
         return [convert_numpy_types(item) for item in obj]
     return obj
 
-def send_email(to: str, body_html: html_str, server: smtplib.SMTP | None = None, subject: str = "NHS Proposal Confirmation", sender: str = "eddy12597@163.com", attachments: list[str] | None = None) -> bool:
+def send_email(to: str, body_html: html_str, debug: bool = True, subject: str = "NHS Proposal Confirmation", sender: str = "eddy12597@163.com", attachments: list[str] | None = None) -> bool:
     handler = EmailHandler()
-    if server is not None:
-        return handler.send_email(to, body_html, subject, sender, attachments, debug=False)
-    return handler.send_email(to, body_html, subject, sender, attachments, debug=True)
+    return handler.send_email(to, body_html, subject, sender, attachments, debug=debug)
 
 # pyright: ignore[reportUnusedExpression]
 

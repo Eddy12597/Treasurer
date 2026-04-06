@@ -23,7 +23,23 @@ def get_stats_and_upcoming_events():
         for i, row in proposals_df.iterrows():
             obj = { feature: row[feature] for feature in features}
             
-            itemized_budget = json.loads(row["itemized_budget"])
+            raw_budget = row["itemized_budget"]
+            if isinstance(raw_budget, dict):
+                itemized_budget = raw_budget
+            else:
+                try:
+                    # Clean up potential string-wrapping issues from the Spreadsheet/Pandas
+                    clean_str = str(raw_budget).strip().replace('""', '"')
+                    if clean_str.startswith('"') and clean_str.endswith('"'):
+                        clean_str = clean_str[1:-1]
+                    itemized_budget = json.loads(clean_str)
+                except:
+                    # Final fallback: use ast.literal_eval for Python-style dict strings
+                    try:
+                        import ast
+                        itemized_budget = ast.literal_eval(str(raw_budget))
+                    except:
+                        itemized_budget = {} # Default if data is corrupted
             
             obj["approx_total_budget"] = sum(itemized_budget.values())
             

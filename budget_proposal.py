@@ -2,8 +2,9 @@
 from datetime import datetime
 from enum import Enum
 import re
+import json
 
-EMAIL_RE = r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+EMAIL_RE = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
 
 def raise_error(info: str | None):
     raise RuntimeError(info)
@@ -19,7 +20,7 @@ class BudgetProposal:
 
     def __init__(self,
                  # event info 
-                 event_name: str, event_chairs: list[str], contact_email: str, event_start_date: str, event_type: EventType,
+                 event_name: str, event_chair: str, contact_email: str, event_start_date: str, event_type: EventType,
                  # budgets
                  itemized_budget: dict[str, int | float], expected_revenue: int | float,
                  # justification
@@ -27,8 +28,8 @@ class BudgetProposal:
                  # execution details
                  estimated_attendance: int, vendors_suppliers: list[str], reimbursement_contact: str):
         self.event_name = event_name
-        self.event_chairs = event_chairs
-        self.contact_email = contact_email if re.match(EMAIL_RE, contact_email) else raise_error("Contact Email is invalid")
+        self.event_chair = event_chair
+        self.contact_email = str(contact_email).strip() if re.match(EMAIL_RE, contact_email) else raise_error("Contact Email is invalid")
         self.event_start_date = event_start_date
         self.event_type = event_type
         
@@ -42,35 +43,50 @@ class BudgetProposal:
         self.estimated_attendance = estimated_attendance
         self.vendors_suppliers = vendors_suppliers
         self.reimbursement_contact = reimbursement_contact
+        BudgetProposal.latestID += 1
         
     @classmethod
     def from_dict(cls, data: dict) -> 'BudgetProposal | None':
         
         event_name = data.get("event_name", "")
-        event_chairs = data.get("event_chairs", [])
+        
+        event_chair = data.get("event_chair", "")
+        
         contact_email = data.get("contact_email", "")
         event_start_date = data.get("event_start_date", "")
-        event_type = data.get("event_type", EventType.OTHER)
+        
+        # Fix: Convert string to Enum
+        event_type_str = data.get("event_type", "OTHER")
+        try:
+            event_type = EventType(event_type_str)
+        except ValueError:
+            event_type = EventType.OTHER
         
         itemized_budget = data.get("itemized_budget", {})
         expected_revenue = data.get("expected_revenue", 0)
-    
+
         justification = data.get("justification", "")
         purpose = data.get("purpose", "")
         nhs_fund_reason = data.get("nhs_fund_reason", "")
         
         estimated_attendance = data.get("estimated_attendance", 0)
-        vendors_suppliers = data.get("vendors_suppliers", [])
+        
+        # Fix: Handle string instead of list
+        vendors_suppliers = data.get("vendors_suppliers", "")
+        if isinstance(vendors_suppliers, str) and vendors_suppliers:
+            vendors_suppliers = [vendors_suppliers]
+        elif not vendors_suppliers:
+            vendors_suppliers = []
+        
         reimbursement_contact = data.get("reimbursement_contact", "")
         
         return cls(
-            event_name, event_chairs, contact_email, event_start_date, event_type,
+            event_name, event_chair, contact_email, event_start_date, event_type,
             itemized_budget, expected_revenue,
             justification, purpose, nhs_fund_reason,
             estimated_attendance, vendors_suppliers, reimbursement_contact)
 
     def _safe_str(self, value) -> str:
-            """Convert value to string, handling None and edge cases."""
             if value is None:
                 return ""
             if isinstance(value, float):
@@ -83,16 +99,10 @@ class BudgetProposal:
                 return value.value
             if isinstance(value, (list, dict)):
                 # Use JSON-like string representation for complex types
-                import json
                 return json.dumps(value, ensure_ascii=False)
             return str(value)
         
     def _escape_csv_field(self, field: str) -> str:
-        """
-        Escape a field for CSV output:
-        - Wrap in quotes if contains comma, newline, or double quote
-        - Escape double quotes by doubling them
-        """
         if not field:
             return field
         
@@ -104,10 +114,10 @@ class BudgetProposal:
         
         return field
 
-    def to_row(self) -> str:
+    def to_row(self) -> list:
         fields = [
             self._safe_str(self.event_name),
-            self._safe_str(self.event_chairs),
+            self._safe_str(self.event_chair),
             self._safe_str(self.contact_email),
             self._safe_str(self.event_start_date),
             self._safe_str(self.event_type),
@@ -121,8 +131,8 @@ class BudgetProposal:
             self._safe_str(self.reimbursement_contact),
             str(BudgetProposal.latestID),
             "",
-            "0" # unapproved by default
+            "0", # unapproved by default,
+            "0"
         ]
         
-        # Apply CSV escaping to each field
-        return ",".join([self._escape_csv_field(field) for field in fields])
+        return [self._escape_csv_field(field) for field in fields]
