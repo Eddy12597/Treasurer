@@ -26,7 +26,7 @@ class BudgetProposal:
                  # justification
                  justification: str, purpose: str, nhs_fund_reason: str,
                  # execution details
-                 estimated_attendance: int, vendors_suppliers: list[str], reimbursement_contact: str):
+                 estimated_attendance: int, vendors_suppliers: str, reimbursement_contact: str):
         self.event_name = event_name
         self.event_chair = event_chair
         self.contact_email = str(contact_email).strip() if re.match(EMAIL_RE, contact_email) else raise_error("Contact Email is invalid")
@@ -74,9 +74,9 @@ class BudgetProposal:
         # Fix: Handle string instead of list
         vendors_suppliers = data.get("vendors_suppliers", "")
         if isinstance(vendors_suppliers, str) and vendors_suppliers:
-            vendors_suppliers = [vendors_suppliers]
+            vendors_suppliers = vendors_suppliers
         elif not vendors_suppliers:
-            vendors_suppliers = []
+            vendors_suppliers = ""
         
         reimbursement_contact = data.get("reimbursement_contact", "")
         
