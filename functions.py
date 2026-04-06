@@ -19,7 +19,7 @@ def get_stats_and_upcoming_events():
         balance = float(transactions_df.iloc[-1]["Balance"].item())
         
         upcoming_events = []
-        features = ["event_name", "event_chair"]
+        features = ["event_name", "event_chair", "event_start_date"]
         for i, row in proposals_df.iterrows():
             obj = { feature: row[feature] for feature in features}
             
