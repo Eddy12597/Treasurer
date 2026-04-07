@@ -11,6 +11,7 @@ from functions import get_stats_and_upcoming_events
 from utils import send_email, convert_numpy_types
 import json
 import sys
+import hashlib
 
 if 'win' not in sys.platform:
     load_dotenv(dotenv_path="/home/eddy12598/Treasurer/.env")
@@ -192,6 +193,25 @@ def handle_submit_budget_proposal():
         return f"Server Error: {e}", 500
     
     return 'Success', 200
+
+def find_nonce(transaction_data: str, prev_hash: str, target_prefix: str = "0000000") -> tuple[int, str]:
+    """
+    Brute‑force a nonce so that:
+        SHA256(transaction_data + prev_hash + str(nonce))
+    starts with target_prefix.
+    Returns (nonce, final_hash)
+    """
+    
+    # 5 zeros: 0~2 s
+    # 6 zeros: 5~15s
+    nonce = 0
+    for _ in range(100_000_000): # ~1 minute
+        data_to_hash = f"{transaction_data}{prev_hash}{nonce}"
+        h = hashlib.sha256(data_to_hash.encode()).hexdigest()
+        if h.startswith(target_prefix):
+            return nonce, h
+        nonce += 1
+    raise TimeoutError(f"Cannot find nonce for {transaction_data}, with previous hash {prev_hash}. Timeout after nonce={nonce}")
 
 @app.route("/get-stats-and-upcoming-events", methods=['GET'])
 def stats():
