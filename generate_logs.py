@@ -13,8 +13,8 @@ def find_nonce(data_to_hash: str, target_prefix: str = "000000") -> tuple[int, s
         if h.startswith(target_prefix):
             return nonce, h
         nonce += 1
-        if nonce % 1000000 == 0:
-            print(f"... still mining, reached {nonce} iterations")
+        if nonce % 10_000_000 == 0:
+            print(f"Iteration: {nonce}")
 
 def create_transaction(amount, notes, to_user, from_user, prev_hash, balance):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -39,13 +39,15 @@ def create_transaction(amount, notes, to_user, from_user, prev_hash, balance):
 genesis_prev_hash = "0"*64
 chain = []
 
-# Block 1 (Genesis)
-t1 = create_transaction(0, "Genesis Block", "System", "System", "0", 0)
+t1 = create_transaction(0, "Genesis Block", "Treasury", "Treasury", genesis_prev_hash, 0)
 chain.append(t1)
 
 # Block 2
 t2 = create_transaction(0, "Initial Funding", "Treasury", "Treasury", t1['PrevHash'], 0)
 chain.append(t2)
+
+t3 = create_transaction(0, "Testing", "Treasury", "Treasury", t2["PrevHash"], 0)
+chain.append(t3)
 
 print("\n--- Copy these rows to Google Sheets ---")
 print(json.dumps(chain, indent=2))
