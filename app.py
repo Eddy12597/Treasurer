@@ -240,6 +240,7 @@ def stats():
 def get_logs():
     with NHSGoogleSheets("NHS Budget Proposals") as sheets:
         transactions_df = sheets.get_df("Transactions")
+        transactions_df["PrevHash"][0] = "0" * 64
         data = transactions_df.to_dict(orient="records")
     return {
         "data": data
