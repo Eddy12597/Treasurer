@@ -12,6 +12,8 @@ from utils import send_email, convert_numpy_types
 import json
 import sys
 import hashlib
+import threading
+from queue import Queue
 
 if 'win' not in sys.platform:
     load_dotenv(dotenv_path="/home/eddy12598/Treasurer/.env")
@@ -240,14 +242,50 @@ def stats():
 def get_logs():
     with NHSGoogleSheets("NHS Budget Proposals") as sheets:
         transactions_df = sheets.get_df("Transactions")
-        transactions_df["PrevHash"][0] = "0" * 64
+        # transactions_df["PrevHash"][0] = "0" * 64
+        transactions_df.loc[0, "PrevHash"] = "0" * 64
         data = transactions_df.to_dict(orient="records")
     return {
         "data": data
     }, 200
 
+transaction_queue = Queue()
 
+def mine_block(Timestamp, From, To, Amount, Notes, PrevHash, max_trials: int = 100_000_000, prefix="000000"):
+    nonce = 0
+    # Pre-encode static data to speed up loop
+    encoded_base = f"{Timestamp}{From}{To}{Amount}{Notes}{PrevHash}".encode()
+    for i in range(max_trials):
+        h = hashlib.sha256(encoded_base + str(nonce).encode()).hexdigest()
+        if h.startswith(prefix):
+            return nonce, h
+    raise TimeoutError(f"Could not get nonce for transaction data: {encoded_base.decode()}. Timeout after {max_trials} trials.")
 
+mining_results = {} # key=PrevHash, value=tuple[status: str, Nonce, hashval]
 
-# if __name__ == "__main__":
-#     app.run(debug=True)
+@app.route("/add-transaction", methods=['POST'])
+def add_transaction():
+    js = request.json
+    if js is None:
+        return "Failed to parse transaction", 400
+    # required: Timestamp, From, To, Amount, Notes
+    try:
+        js["Timestamp"], js["From"], js["To"], js["Amount"], js["Notes"] # pyright: ignore[reportUnusedExpression]
+    except KeyError:
+        return "Missing fields", 400
+    
+    with NHSGoogleSheets("NHS Budget Proposals") as sheets:
+        transactions_df = sheets.get_df("Transactions")
+    prevHash = transactions_df.iloc[-1]["PrevHash"]
+    def mine_and_store():
+        try:
+            nonce, hashval = mine_block(js["Timestamp"], js["From"], js["To"], js["Amount"], js["Notes"], prevHash)
+            mining_results[prevHash] = ("success", nonce, hashval)
+            
+        except Exception as e:
+            mining_results[prevHash] = ("error", str(e), str(e))
+    
+    t = threading.Thread(target=mine_and_store)
+    t.start()
+    
+    return {"prevHash": prevHash, "status": "mining_started"}, 202
