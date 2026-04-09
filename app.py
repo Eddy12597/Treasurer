@@ -251,17 +251,78 @@ def get_logs():
 
 transaction_queue = Queue()
 
-def mine_block(Timestamp, From, To, Amount, Notes, PrevHash, max_trials: int = 100_000_000, prefix="000000"):
-    nonce = 0
+def mine_block(Timestamp, From, To, Amount, Notes, PrevHash, max_trials: int = 500_000_000, prefix="000000"):
     # Pre-encode static data to speed up loop
-    encoded_base = f"{Timestamp}{From}{To}{Amount}{Notes}{PrevHash}".encode()
+    encoded_base = f"{Timestamp}{From}{To}{Amount}{Notes}{PrevHash}"
+    print(f"Mining started for encoded base:\n{encoded_base}")
+    x = max_trials / 20
     for i in range(max_trials):
-        h = hashlib.sha256(encoded_base + str(nonce).encode()).hexdigest()
+        h = hashlib.sha256(f"{encoded_base}{i}".encode()).hexdigest()
         if h.startswith(prefix):
-            return nonce, h
-    raise TimeoutError(f"Could not get nonce for transaction data: {encoded_base.decode()}. Timeout after {max_trials} trials.")
+            return i, h
+        if h.startswith(prefix[:-1]):
+            print(f"{i}: {h}")
+    raise TimeoutError(f"Could not get nonce for transaction data: {encoded_base}. Timeout after {max_trials} trials.")
 
-mining_results = {} # key=PrevHash, value=tuple[status: str, Nonce, hashval]
+mining_results = {} # key=PrevHash, value=tuple[status: str, Nonce: str, hashval: str]
+
+def worker():
+    while True:
+        # 1. Get the next transaction from the queue
+        js = transaction_queue.get()
+        print(f"Received: {js}")
+        
+        # 2. Re-fetch the LATEST hash from the sheet RIGHT BEFORE mining
+        with NHSGoogleSheets("NHS Budget Proposals") as sheets:
+            df = sheets.get_df("Transactions")
+            latest_prev_hash = df.iloc[-1]["Hash"]
+            latest_balance = df.iloc[-1]["Balance"]
+        
+        try: 
+            latest_prev_hash = str(latest_prev_hash.item()) if hasattr(latest_prev_hash, 'item') else str(latest_prev_hash)
+            latest_balance = float(latest_balance.item()) if hasattr(latest_balance, 'item') else float(latest_balance)
+        except: 
+            latest_prev_hash = str(latest_prev_hash)
+            latest_balance = float(latest_balance)
+        
+        # 3. Mine the block
+        data = f"{js['Timestamp']}{js['From']}{js['To']}{js['Amount']}{js['Notes']}{latest_prev_hash}"
+        
+        nonce, hashval = mine_block(js["Timestamp"], js["From"], js["To"], js["Amount"], js["Notes"], latest_prev_hash)
+        
+        # Calculate new balance
+        amount = float(js["Amount"])
+        if js["From"] == "Treasury":
+            balance_change = -amount
+        elif js["To"] == "Treasury":
+            balance_change = amount
+        else:
+            balance_change = 0
+        
+        new_balance = latest_balance + balance_change
+        
+        # 4. Write to Google Sheets immediately - USE SCALAR VALUES, NOT SERIES
+        with NHSGoogleSheets("NHS Budget Proposals") as sheets:
+            sheets.append_row("Transactions", [
+                js["Timestamp"],
+                js["From"],  
+                js["To"],  
+                float(js["Amount"]),
+                "N/A",
+                float(new_balance), 
+                js["Notes"],  
+                latest_prev_hash, 
+                float(nonce), 
+                data, 
+                f"{data}{latest_prev_hash}{nonce}", 
+                hashval, 
+                "Yes"
+            ])
+        
+        transaction_queue.task_done()
+        print("Task done!")
+
+threading.Thread(target=worker, daemon=True).start()
 
 @app.route("/add-transaction", methods=['POST'])
 def add_transaction():
@@ -273,19 +334,7 @@ def add_transaction():
         js["Timestamp"], js["From"], js["To"], js["Amount"], js["Notes"] # pyright: ignore[reportUnusedExpression]
     except KeyError:
         return "Missing fields", 400
+    transaction_queue.put(request.json)
+    print(f"queued: {request.json}")
+    return {"status": "queued"}, 202
     
-    with NHSGoogleSheets("NHS Budget Proposals") as sheets:
-        transactions_df = sheets.get_df("Transactions")
-    prevHash = transactions_df.iloc[-1]["PrevHash"]
-    def mine_and_store():
-        try:
-            nonce, hashval = mine_block(js["Timestamp"], js["From"], js["To"], js["Amount"], js["Notes"], prevHash)
-            mining_results[prevHash] = ("success", nonce, hashval)
-            
-        except Exception as e:
-            mining_results[prevHash] = ("error", str(e), str(e))
-    
-    t = threading.Thread(target=mine_and_store)
-    t.start()
-    
-    return {"prevHash": prevHash, "status": "mining_started"}, 202

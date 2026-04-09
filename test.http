@@ -1,0 +1,10 @@
+POST http://localhost:5000/add-transaction
+Content-Type: application/json
+
+{
+    "Timestamp": "2026-04-09 12:10:26",
+    "From": "Hamchiu Eddy Zhang",
+    "To": "Treasury",
+    "Amount": "0",
+    "Notes": "Testing"
+}

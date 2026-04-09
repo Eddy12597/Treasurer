@@ -16,8 +16,7 @@ class EventType(Enum):
     OTHER="OTHER"
 
 class BudgetProposal:
-    latestID: int = 0
-
+    last_prop_id=0
     def __init__(self,
                  # event info 
                  event_name: str, event_chair: str, contact_email: str, event_start_date: str, event_type: EventType,
@@ -43,7 +42,14 @@ class BudgetProposal:
         self.estimated_attendance = estimated_attendance
         self.vendors_suppliers = vendors_suppliers
         self.reimbursement_contact = reimbursement_contact
-        BudgetProposal.latestID += 1
+        with open("data.json", encoding='utf-8') as f:
+            d = json.load(f)
+            BudgetProposal.last_prop_id = int(d.get("LastPropID", 0)) + 1
+        d["LastPropID"] = BudgetProposal.last_prop_id
+        with open("data.json", "r", encoding='utf-8') as f:
+            json.dump(d, f)
+                
+        
         
     @classmethod
     def from_dict(cls, data: dict) -> 'BudgetProposal | None':
@@ -129,7 +135,7 @@ class BudgetProposal:
             self._safe_str(self.estimated_attendance),
             self._safe_str(self.vendors_suppliers),
             self._safe_str(self.reimbursement_contact),
-            str(BudgetProposal.latestID),
+            str(BudgetProposal.last_prop_id),
             "",
             "0", # unapproved by default,
             "0"
