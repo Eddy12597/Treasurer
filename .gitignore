@@ -1,3 +1,4 @@
 key_file.json
 *.env
 __pycache__/
+*.vscode/
