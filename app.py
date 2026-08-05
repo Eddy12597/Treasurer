@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import budget_proposal
 from version import get_version_info
@@ -14,6 +14,7 @@ import sys
 import hashlib
 import threading
 from queue import Queue
+from api_send_email import send_email
 
 if 'win' not in sys.platform:
     load_dotenv(dotenv_path="/home/eddy12598/Treasurer/.env")
@@ -189,31 +190,12 @@ def handle_submit_budget_proposal():
         email_content = get_email_body(name, propid, event_name, event_chair, event_start_date, 
                                        event_type, itemized_budget, expected_revenue, 
                                        estimated_attendance, vendors_suppliers, reimbursement_contact)
-        send_email(recipient, email_content, debug=False)
+        status, code = send_email(recipient, name, "BIPH NHS Budget Proposal Confirmation", email_content)
+        return status, code
     except Exception as e:
         print(f"Email error: {e}")
         return f"Server Error: {e}", 500
-    
-    return 'Success', 200
-
-def find_nonce(transaction_data: str, prev_hash: str, target_prefix: str = "0000000") -> tuple[int, str]:
-    """
-    Brute‑force a nonce so that:
-        SHA256(transaction_data + prev_hash + str(nonce))
-    starts with target_prefix.
-    Returns (nonce, final_hash)
-    """
-    
-    # 5 zeros: 0~2 s
-    # 6 zeros: 5~15s
-    nonce = 0
-    for _ in range(100_000_000): # ~1 minute
-        data_to_hash = f"{transaction_data}{prev_hash}{nonce}"
-        h = hashlib.sha256(data_to_hash.encode()).hexdigest()
-        if h.startswith(target_prefix):
-            return nonce, h
-        nonce += 1
-    raise TimeoutError(f"Cannot find nonce for {transaction_data}, with previous hash {prev_hash}. Timeout after nonce={nonce}")
+        
 
 @app.route("/get-stats-and-upcoming-events", methods=['GET'])
 def stats():
@@ -243,98 +225,123 @@ def get_logs():
     with NHSGoogleSheets("NHS Budget Proposals") as sheets:
         transactions_df = sheets.get_df("Transactions")
         # transactions_df["PrevHash"][0] = "0" * 64
-        transactions_df.loc[0, "PrevHash"] = "0" * 64
+        # transactions_df.loc[0, "PrevHash"] = "0" * 64
         data = transactions_df.to_dict(orient="records")
     return {
         "data": data
     }, 200
 
-transaction_queue = Queue()
+# transaction_queue = Queue(maxsize=10)
 
-def mine_block(Timestamp, From, To, Amount, Notes, PrevHash, max_trials: int = 500_000_000, prefix="000000"):
-    # Pre-encode static data to speed up loop
-    encoded_base = f"{Timestamp}{From}{To}{Amount}{Notes}{PrevHash}"
-    print(f"Mining started for encoded base:\n{encoded_base}")
-    x = max_trials / 20
-    for i in range(max_trials):
-        h = hashlib.sha256(f"{encoded_base}{i}".encode()).hexdigest()
-        if h.startswith(prefix):
-            return i, h
-        if h.startswith(prefix[:-1]):
-            print(f"{i}: {h}")
-    raise TimeoutError(f"Could not get nonce for transaction data: {encoded_base}. Timeout after {max_trials} trials.")
+# def mine_block(Timestamp, From, To, Amount, Notes, PrevHash, max_trials: int = 500_000_000, prefix="000000"):
+#     # Pre-encode static data to speed up loop
+#     encoded_base = f"{Timestamp}{From}{To}{Amount}{Notes}{PrevHash}"
+#     print(f"Mining started for encoded base:\n{encoded_base}")
+#     x = max_trials / 20
+#     for i in range(max_trials):
+#         h = hashlib.sha256(f"{encoded_base}{i}".encode()).hexdigest()
+#         if h.startswith(prefix):
+#             return i, h
+#         if h.startswith(prefix[:-1]):
+#             print(f"{i}: {h}")
+#     raise TimeoutError(f"Could not get nonce for transaction data: {encoded_base}. Timeout after {max_trials} trials.")
 
-mining_results = {} # key=PrevHash, value=tuple[status: str, Nonce: str, hashval: str]
+# mining_results = {} # key=PrevHash, value=tuple[status: str, Nonce: str, hashval: str]
 
-def worker():
-    while True:
-        # 1. Get the next transaction from the queue
-        js = transaction_queue.get()
-        print(f"Received: {js}")
+# def worker():
+#     while True:
+#         # 1. Get the next transaction from the queue
+#         js = transaction_queue.get()
+#         print(f"Received: {js}")
         
-        # 2. Re-fetch the LATEST hash from the sheet RIGHT BEFORE mining
-        with NHSGoogleSheets("NHS Budget Proposals") as sheets:
-            df = sheets.get_df("Transactions")
-            latest_prev_hash = df.iloc[-1]["Hash"]
-            latest_balance = df.iloc[-1]["Balance"]
+#         # 2. Re-fetch the LATEST hash from the sheet RIGHT BEFORE mining
+#         with NHSGoogleSheets("NHS Budget Proposals") as sheets:
+#             df = sheets.get_df("Transactions")
+#             latest_prev_hash = df.iloc[-1]["Hash"]
+#             latest_balance = df.iloc[-1]["Balance"]
         
-        try: 
-            latest_prev_hash = str(latest_prev_hash.item()) if hasattr(latest_prev_hash, 'item') else str(latest_prev_hash)
-            latest_balance = float(latest_balance.item()) if hasattr(latest_balance, 'item') else float(latest_balance)
-        except: 
-            latest_prev_hash = str(latest_prev_hash)
-            latest_balance = float(latest_balance)
+#         try: 
+#             latest_prev_hash = str(latest_prev_hash.item()) if hasattr(latest_prev_hash, 'item') else str(latest_prev_hash)
+#             latest_balance = float(latest_balance.item()) if hasattr(latest_balance, 'item') else float(latest_balance)
+#         except: 
+#             latest_prev_hash = str(latest_prev_hash)
+#             latest_balance = float(latest_balance)
         
-        # 3. Mine the block
-        data = f"{js['Timestamp']}{js['From']}{js['To']}{js['Amount']}{js['Notes']}{latest_prev_hash}"
+#         # 3. Mine the block
+#         data = f"{js['Timestamp']}{js['From']}{js['To']}{js['Amount']}{js['Notes']}{latest_prev_hash}"
         
-        nonce, hashval = mine_block(js["Timestamp"], js["From"], js["To"], js["Amount"], js["Notes"], latest_prev_hash)
+#         nonce, hashval = mine_block(js["Timestamp"], js["From"], js["To"], js["Amount"], js["Notes"], latest_prev_hash)
         
-        # Calculate new balance
-        amount = float(js["Amount"])
-        if js["From"] == "Treasury":
-            balance_change = -amount
-        elif js["To"] == "Treasury":
-            balance_change = amount
-        else:
-            balance_change = 0
+#         # Calculate new balance
+#         amount = float(js["Amount"])
+#         if js["From"] == "Treasury":
+#             balance_change = -amount
+#         elif js["To"] == "Treasury":
+#             balance_change = amount
+#         else:
+#             balance_change = 0
         
-        new_balance = latest_balance + balance_change
+#         new_balance = latest_balance + balance_change
         
-        # 4. Write to Google Sheets immediately - USE SCALAR VALUES, NOT SERIES
-        with NHSGoogleSheets("NHS Budget Proposals") as sheets:
-            sheets.append_row("Transactions", [
-                js["Timestamp"],
-                js["From"],  
-                js["To"],  
-                float(js["Amount"]),
-                "N/A",
-                float(new_balance), 
-                js["Notes"],  
-                latest_prev_hash, 
-                float(nonce), 
-                data, 
-                f"{data}{latest_prev_hash}{nonce}", 
-                hashval, 
-                "Yes"
-            ])
+#         # 4. Write to Google Sheets immediately - USE SCALAR VALUES, NOT SERIES
+#         with NHSGoogleSheets("NHS Budget Proposals") as sheets:
+#             sheets.append_row("Transactions", [
+#                 js["Timestamp"],
+#                 js["From"],  
+#                 js["To"],  
+#                 float(js["Amount"]),
+#                 "N/A",
+#                 float(new_balance), 
+#                 js["Notes"],  
+#                 latest_prev_hash, 
+#                 float(nonce), 
+#                 data, 
+#                 f"{data}{latest_prev_hash}{nonce}", 
+#                 hashval, 
+#                 "Yes"
+#             ])
         
-        transaction_queue.task_done()
-        print("Task done!")
+#         transaction_queue.task_done()
+#         print("Task done!")
 
-threading.Thread(target=worker, daemon=True).start()
+# threading.Thread(target=worker, daemon=True).start()
 
-@app.route("/add-transaction", methods=['POST'])
-def add_transaction():
-    js = request.json
-    if js is None:
-        return "Failed to parse transaction", 400
-    # required: Timestamp, From, To, Amount, Notes
-    try:
-        js["Timestamp"], js["From"], js["To"], js["Amount"], js["Notes"] # pyright: ignore[reportUnusedExpression]
-    except KeyError:
-        return "Missing fields", 400
-    transaction_queue.put(request.json)
-    print(f"queued: {request.json}")
-    return {"status": "queued"}, 202
+# # @app.route("/add-transaction", methods=['POST'])
+# # def add_transaction():
+# #     if transaction_queue.full():
+# #         return jsonify({"error": "Miner is busy, try again later"}), 429
+# #     js = request.json
+# #     if js is None:
+# #         return "Failed to parse transaction", 400
+# #     # required: Timestamp, From, To, Amount, Notes
+# #     try:
+# #         js["Timestamp"], js["From"], js["To"], js["Amount"], js["Notes"] # pyright: ignore[reportUnusedExpression]
+# #     except KeyError:
+# #         return "Missing fields", 400
+# #     transaction_queue.put(request.json)
+# #     print(f"queued: {request.json}")
+# #     return {"status": "queued"}, 202
+
+# def create_link(data_dict, prev_hash):
+#     # No more nonce, no more while loop
+#     base_data = f"{data_dict['Timestamp']}{data_dict['From']}{data_dict['To']}{data_dict['Amount']}{data_dict['Notes']}{prev_hash}"
+#     return hashlib.sha256(base_data.encode()).hexdigest()
+
+# @app.route("/add-transaction", methods=['POST'])
+# def add_transaction():
+#     js = request.json
+#     if js is None:
+#         return "Failed to parse transaction", 400
+    
+#     with NHSGoogleSheets("NHS Budget Proposals") as sheets:
+#         df = sheets.get_df("Transactions")
+#         latest_hash = df.iloc[-1]["Hash"] 
+        
+#         # Instant result
+#         new_hash = create_link(js, latest_hash)
+        
+#         new_row = [js['Timestamp'], js['From'], js['To'], js['Amount'], js['Notes'], latest_hash, new_hash]
+#         sheets.append_row("Transactions", new_row)
+        
+#     return {"status": "success", "hash": new_hash}, 201
     
