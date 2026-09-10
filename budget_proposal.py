@@ -46,7 +46,7 @@ class BudgetProposal:
             d = json.load(f)
             BudgetProposal.last_prop_id = int(d.get("LastPropID", 0)) + 1
         d["LastPropID"] = BudgetProposal.last_prop_id
-        with open("data.json", "r", encoding='utf-8') as f:
+        with open("data.json", "w", encoding='utf-8') as f:
             json.dump(d, f)
                 
         

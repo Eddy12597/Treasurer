@@ -14,7 +14,7 @@ def main():
     if result.returncode == 0:
         print("\nUpdating version info...")
         update_version_info()
-        print("Done!")
+        print("Done! Remember to Reload the project!")
     else:
         print("Git pull failed")
         sys.exit(1)
