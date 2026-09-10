@@ -193,7 +193,8 @@ def handle_submit_budget_proposal():
         status, code = send_email(recipient, name, "BIPH NHS Budget Proposal Confirmation", email_content)
         return status, code
     except Exception as e:
-        print(f"Email error: {e}")
+        import traceback
+        traceback.print_exc()
         return f"Server Error: {e}", 500
         
 

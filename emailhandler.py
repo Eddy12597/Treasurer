@@ -176,7 +176,7 @@ class EmailHandler:
         return body[:length] + "..." if len(body) > length else body
     
     def send_email(self, to: str, body_html: str, subject: str = "NHS Proposal Confirmation", sender: str | None = None, attachments: list[str] | None = None, debug: bool = False) -> tuple[str, int]:
-        return "ok", 400
+        return "ok", 200
         sender = sender or self.email
         body_text = html_to_markdown(body_html)
         msg = MIMEMultipart("alternative")
