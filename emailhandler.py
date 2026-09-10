@@ -175,7 +175,8 @@ class EmailHandler:
                 raise
         return body[:length] + "..." if len(body) > length else body
     
-    def send_email(self, to: str, body_html: str, subject: str = "NHS Proposal Confirmation", sender: str | None = None, attachments: list[str] | None = None, debug: bool = False) -> bool:
+    def send_email(self, to: str, body_html: str, subject: str = "NHS Proposal Confirmation", sender: str | None = None, attachments: list[str] | None = None, debug: bool = False) -> tuple[str, int]:
+        # return True
         sender = sender or self.email
         body_text = html_to_markdown(body_html)
         msg = MIMEMultipart("alternative")
@@ -209,7 +210,7 @@ class EmailHandler:
             with open(outbox_file, "w", encoding="utf-8") as f:
                 f.write(msg.as_string())
             print(f"Saved to outbox: {outbox_file}")
-            return True
+            return ("ok", 200)
         
         try:
             if self.smtp_port == 465:
@@ -221,7 +222,7 @@ class EmailHandler:
                     server.starttls()
                     server.login(self.email, self.password)
                     server.send_message(msg)
-            return True
+            return ("ok", 200)
         except smtplib.SMTPException as e:
             print(f"Error: {e}")
             choice = input("Email failed. [S]kip, [R]etry, [A]bort? ").lower().strip()
@@ -236,9 +237,9 @@ class EmailHandler:
                             server.starttls()
                             server.login(self.email, self.password)
                             server.send_message(msg)
-                    return True
+                    return ("ok after retry", 200)
                 except:
-                    return False
+                    return ("failed after retry", 400)
             elif choice == 'a':
                 raise SystemExit
-            return False
+            return ("failed after skip", 400)

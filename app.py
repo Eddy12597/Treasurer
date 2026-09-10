@@ -142,59 +142,59 @@ def index():
     version_info = get_version_info()
     return f"Backend is running! Use /submit-budget-proposal to submit.\n\n{version_info}"
 
-# @app.route('/submit-budget-proposal', methods=['POST'])
-# def handle_submit_budget_proposal():
-#     data = request.get_json()
-#     prop = budget_proposal.BudgetProposal.from_dict(data)
-#     if prop is None:
-#         return "Failed to parse proposal", 400
+@app.route('/submit-budget-proposal', methods=['POST'])
+def handle_submit_budget_proposal():
+    data = request.get_json()
+    prop = budget_proposal.BudgetProposal.from_dict(data)
+    if prop is None:
+        return "Failed to parse proposal", 400
     
-#     with NHSGoogleSheets("NHS Budget Proposals") as sheets:
-#         sheets.append_row("Proposals", prop.to_row())
-#         proposals_df = sheets.get_df("Proposals")
-#         row = proposals_df.iloc[-1].fillna("__ERROR__")
+    with NHSGoogleSheets("NHS Budget Proposals") as sheets:
+        sheets.append_row("Proposals", prop.to_row())
+        proposals_df = sheets.get_df("Proposals")
+        row = proposals_df.iloc[-1].fillna("__ERROR__")
     
-#     recipient = row["contact_email"]
-#     name = row["event_chair"]
-#     propid = row["PROP_ID"]
-#     event_name = row["event_name"]
-#     event_chair = row["event_chair"]
-#     event_start_date = row["event_start_date"]
-#     event_type = row["event_type"]
+    recipient = row["contact_email"]
+    name = row["event_chair"]
+    propid = row["PROP_ID"]
+    event_name = row["event_name"]
+    event_chair = row["event_chair"]
+    event_start_date = row["event_start_date"]
+    event_type = row["event_type"]
     
-#     # Process itemized_budget
-#     raw_budget = row["itemized_budget"]
-#     if isinstance(raw_budget, dict):
-#         itemized_budget = raw_budget
-#     else:
-#         try:
-#             # Clean up potential Google Sheets formatting issues
-#             clean_str = str(raw_budget).replace('""', '"')
-#             if clean_str.startswith('"') and clean_str.endswith('"'):
-#                 clean_str = clean_str[1:-1]
-#             itemized_budget = json.loads(clean_str)
-#         except Exception:
-#             try:
-#                 import ast
-#                 itemized_budget = ast.literal_eval(str(raw_budget))
-#             except Exception as e:
-#                 print(f"Final fallback failed: {e}")
-#                 itemized_budget = {}
+    # Process itemized_budget
+    raw_budget = row["itemized_budget"]
+    if isinstance(raw_budget, dict):
+        itemized_budget = raw_budget
+    else:
+        try:
+            # Clean up potential Google Sheets formatting issues
+            clean_str = str(raw_budget).replace('""', '"')
+            if clean_str.startswith('"') and clean_str.endswith('"'):
+                clean_str = clean_str[1:-1]
+            itemized_budget = json.loads(clean_str)
+        except Exception:
+            try:
+                import ast
+                itemized_budget = ast.literal_eval(str(raw_budget))
+            except Exception as e:
+                print(f"Final fallback failed: {e}")
+                itemized_budget = {}
 
-#     expected_revenue = row["expected_revenue"]
-#     estimated_attendance = row["estimated_attendance"]
-#     vendors_suppliers = row["vendors_suppliers"]
-#     reimbursement_contact = row["reimbursement_contact"]
+    expected_revenue = row["expected_revenue"]
+    estimated_attendance = row["estimated_attendance"]
+    vendors_suppliers = row["vendors_suppliers"]
+    reimbursement_contact = row["reimbursement_contact"]
     
-#     try:
-#         email_content = get_email_body(name, propid, event_name, event_chair, event_start_date, 
-#                                        event_type, itemized_budget, expected_revenue, 
-#                                        estimated_attendance, vendors_suppliers, reimbursement_contact)
-#         status, code = send_email(recipient, name, "BIPH NHS Budget Proposal Confirmation", email_content)
-#         return status, code
-#     except Exception as e:
-#         print(f"Email error: {e}")
-#         return f"Server Error: {e}", 500
+    try:
+        email_content = get_email_body(name, propid, event_name, event_chair, event_start_date, 
+                                       event_type, itemized_budget, expected_revenue, 
+                                       estimated_attendance, vendors_suppliers, reimbursement_contact)
+        status, code = send_email(recipient, name, "BIPH NHS Budget Proposal Confirmation", email_content)
+        return status, code
+    except Exception as e:
+        print(f"Email error: {e}")
+        return f"Server Error: {e}", 500
         
 
 @app.route("/get-stats-and-upcoming-events", methods=['GET'])
