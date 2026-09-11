@@ -68,7 +68,8 @@ class EmailHandler:
         status, response = None, None
         try:
             # dummy
-            self.mail = im.IMAP4_SSL(self.imap_server, imap_port)
+            # self.mail = im.IMAP4_SSL(self.imap_server, imap_port)
+            self.mail = None
             # self.mail.login(self.email, self.password)
             try:
                 id_payload = (
