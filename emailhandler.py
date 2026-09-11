@@ -53,6 +53,7 @@ class Email:
 
 class EmailHandler:
     def __init__(self, imap_server: str = "imap.163.com", imap_port: int = 993, init_num: int = 10, mailbox = "INBOX", support_email: str | None = None, smtp_server: str | None = None, smtp_port: int | None = None):
+        # Dummy
         self.email = os.getenv("EMAIL") or "eddy12597@163.com"
         self.password = os.getenv("PASSKEY") or os.getenv("PASSWORD") or "Password Not Provided"
         
@@ -66,8 +67,9 @@ class EmailHandler:
         
         status, response = None, None
         try:
+            # dummy
             self.mail = im.IMAP4_SSL(self.imap_server, imap_port)
-            self.mail.login(self.email, self.password)
+            # self.mail.login(self.email, self.password)
             try:
                 id_payload = (
                     '("name" "NHS Treasury Bot" '
@@ -75,7 +77,7 @@ class EmailHandler:
                     '"vendor" "BIPH National Honor Society" '
                     f'"support-email" "{self.support_email}")'
                 )
-                sta, res = self.mail._simple_command("ID", id_payload)
+                # sta, res = self.mail._simple_command("ID", id_payload)
             except Exception:
                 pass
         except im.IMAP4.error as e:
