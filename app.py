@@ -184,7 +184,7 @@ def handle_request_reimbursement():
 
 def sync_req_to_gs(req: budget_proposal.ReimbursementRequest) -> bool:
     print(f"Syncing request: {req} to Google Sheets")
-    with NHSGoogleSheets("Reimbursements") as sheets:
+    with NHSGoogleSheets("Proposals") as sheets:
         sheets.append_row("Reimbursements", req.to_row())
         reim_df = sheets.get_df("Reimbursements")
         row = reim_df.iloc[-1].fillna("__ERROR__")
