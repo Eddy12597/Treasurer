@@ -162,20 +162,20 @@ def handle_request_reimbursement():
             if isinstance(img, str) and "," in img:
                 img = img.split(",", 1)[1]  # strip data URL prefix
             img_bytes = base64.b64decode(img)
-            with open(str(p := new_path(data['filenames'][i])), 'wb') as f:
+            p = new_path(data['filenames'][i])
+            with open(str(p), 'wb') as f:
                 f.write(img_bytes)
             paths.append(p)
         req = budget_proposal.ReimbursementRequest(data['propid'], data['itemname'], paths, data['notes'])
         if sync_req_to_gs(req):
             return "ok", 200
+        return "Sync Failed", 500
     except (KeyError, TypeError, ValueError) as e:
         print(f"Bad Request: {e}")
         return f"Bad Request: {e}", 400
     except Exception as ex:
         print(f"Server Error: {ex}")
         return f"Server Error in Reimbursement Request", 500
-    finally:
-        return "Server Error", 500
 
 def sync_req_to_gs(req: budget_proposal.ReimbursementRequest) -> bool:
     with NHSGoogleSheets("Reimbursements") as sheets:
