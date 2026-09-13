@@ -31,6 +31,22 @@ def _escape_csv_field(field: str) -> str:
         
         return field
 
+def _safe_str(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        # Handle NaN, Infinity
+        if str(value) in ('nan', 'inf', '-inf'):
+            return ""
+        # Format floats to avoid excessive decimals
+        return f"{value:.2f}" if value == int(value) else str(value)
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, (list, dict)):
+        # Use JSON-like string representation for complex types
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
+
 class BudgetProposal:
     last_prop_id=0
     def __init__(self,
@@ -107,39 +123,23 @@ class BudgetProposal:
             itemized_budget, expected_revenue,
             justification, purpose, nhs_fund_reason,
             estimated_attendance, vendors_suppliers, reimbursement_contact)
-
-    def _safe_str(self, value) -> str:
-            if value is None:
-                return ""
-            if isinstance(value, float):
-                # Handle NaN, Infinity
-                if str(value) in ('nan', 'inf', '-inf'):
-                    return ""
-                # Format floats to avoid excessive decimals
-                return f"{value:.2f}" if value == int(value) else str(value)
-            if isinstance(value, Enum):
-                return value.value
-            if isinstance(value, (list, dict)):
-                # Use JSON-like string representation for complex types
-                return json.dumps(value, ensure_ascii=False)
-            return str(value)
         
 
     def to_row(self) -> list:
         fields = [
-            self._safe_str(self.event_name),
-            self._safe_str(self.event_chair),
-            self._safe_str(self.contact_email),
-            self._safe_str(self.event_start_date),
-            self._safe_str(self.event_type),
-            self._safe_str(self.itemized_budget),
-            self._safe_str(self.expected_revenue),
-            self._safe_str(self.justification),
-            self._safe_str(self.purpose),
-            self._safe_str(self.nhs_fund_reason),
-            self._safe_str(self.estimated_attendance),
-            self._safe_str(self.vendors_suppliers),
-            self._safe_str(self.reimbursement_contact),
+            _safe_str(self.event_name),
+            _safe_str(self.event_chair),
+            _safe_str(self.contact_email),
+            _safe_str(self.event_start_date),
+            _safe_str(self.event_type),
+            _safe_str(self.itemized_budget),
+            _safe_str(self.expected_revenue),
+            _safe_str(self.justification),
+            _safe_str(self.purpose),
+            _safe_str(self.nhs_fund_reason),
+            _safe_str(self.estimated_attendance),
+            _safe_str(self.vendors_suppliers),
+            _safe_str(self.reimbursement_contact),
             str(BudgetProposal.last_prop_id),
             "",
             "0", # unapproved by default,
@@ -180,10 +180,10 @@ class ReimbursementRequest:
     
     def to_row(self) -> list:
         fields = [
-            str(self.propid),
-            self.itemname,
+            _safe_str(self.propid),
+            _safe_str(self.itemname),
             '0', # appstatus
-            self.notes
+            _safe_str(self.notes)
         ]
         return [_escape_csv_field(field) for field in fields]
 

@@ -166,6 +166,7 @@ def handle_request_reimbursement():
         req = budget_proposal.ReimbursementRequest(data['propid'], data['itemname'], stors, data['notes'])
         if sync_req_to_gs(req):
             return "ok", 200
+        print("Sync Failed")
         return "Sync Failed", 500
     except (KeyError, TypeError, ValueError) as e:
         print(f"Bad Request: {e}")
@@ -185,12 +186,11 @@ def handle_request_reimbursement():
 def sync_req_to_gs(req: budget_proposal.ReimbursementRequest) -> bool:
     print(f"Syncing request: {req} to Google Sheets")
     with NHSGoogleSheets("NHS Budget Proposals") as sheets:
+        print(f"Appending row: {req.to_row()}")
         sheets.append_row("Reimbursements", req.to_row())
-        reim_df = sheets.get_df("Reimbursements")
-        row = reim_df.iloc[-1].fillna("__ERROR__")
-    with NHSGoogleSheets("NHS Budget Proposals") as sheets:
-        prop_df = sheets.get_df("Proposals")
-        p_row = prop_df[prop_df['PROP_ID'].astype(str) == str(req.propid)]
+    # with NHSGoogleSheets("NHS Budget Proposals") as sheets:
+        # prop_df = sheets.get_df("Proposals")
+        # p_row = prop_df[prop_df['PROP_ID'].astype(str) == str(req.propid)]
     print(f"Syncing Complete")
     # return send_email_for_proposal(p_row, subject='Not Implemented', email_content='Not Implemented')[1]==200
     return True # dummy for now
