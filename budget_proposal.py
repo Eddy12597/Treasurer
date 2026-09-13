@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from PIL import Image, ImageOps
 import io
-import uuid
+import storage
 
 EMAIL_RE = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
 
@@ -168,16 +168,15 @@ class ReimbursementRequest:
     
     def __init__(self,
                  propid: int, itemname: str,
-                 receipts_paths: list[str | Path],
+                 receipts_images: list[storage.ImageStorage],
                  notes: str = ""):
         self.propid = propid
         self.itemname = itemname       
-        self.receipts_paths = receipts_paths
+        self.receipts_images = receipts_images
         self.notes = notes
         self.images: list[ReimbursementReceiptImage] = []
-        for p in receipts_paths:
-            with open(p, 'rb') as pf:
-                self.images.append(ReimbursementReceiptImage(pf.read()))
+        for imgstor in self.receipts_images:
+            self.images.append(ReimbursementReceiptImage(imgstor.bytes_data))
     
     def to_row(self) -> list:
         fields = [
@@ -187,4 +186,8 @@ class ReimbursementRequest:
             self.notes
         ]
         return [_escape_csv_field(field) for field in fields]
-        
+
+    def __repr__(self):
+        return f"Request in proposal {self.propid} for item {self.itemname}"
+    def __str__(self):
+        return repr(self)

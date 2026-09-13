@@ -19,6 +19,7 @@ from pathlib import Path
 import base64
 import uuid
 import re
+import storage
 
 if 'win' not in sys.platform:
     load_dotenv(dotenv_path="/home/eddy12598/Treasurer/.env")
@@ -146,27 +147,23 @@ def index():
     version_info = get_version_info()
     return f"Backend is running! Use /submit-budget-proposal to submit.<p>{version_info}"
 
-# keep as log, pass around file names, maybe move this to the main file and never touch in util files
-STORAGE = Path('./STORAGE')
-def new_path(orig_fn: str) -> Path:
-    ext = Path(orig_fn).suffix.lower()
-    return STORAGE / f'{uuid.uuid4().hex}{ext}'
+
+    
 
 @app.route('/request-reimbursement', methods=['POST'])
 def handle_request_reimbursement():
     try:
         data = request.get_json()
-        paths = []
+        stors: list[storage.ImageStorage] = []
         print(f"Length of Images: {len(data['images'])}")
         for i, img in enumerate(data['images']):
             if isinstance(img, str) and "," in img:
                 img = img.split(",", 1)[1]  # strip data URL prefix
             img_bytes = base64.b64decode(img)
-            p = new_path(data['filenames'][i])
-            with open(str(p), 'wb') as f:
-                f.write(img_bytes)
-            paths.append(p)
-        req = budget_proposal.ReimbursementRequest(data['propid'], data['itemname'], paths, data['notes'])
+            fn = data['filenames'][i]
+            stor = storage.ImageStorage(img_bytes, fn)
+            stors.append(stor)
+        req = budget_proposal.ReimbursementRequest(data['propid'], data['itemname'], stors, data['notes'])
         if sync_req_to_gs(req):
             return "ok", 200
         return "Sync Failed", 500
@@ -178,6 +175,7 @@ def handle_request_reimbursement():
         return f"Server Error in Reimbursement Request", 500
 
 def sync_req_to_gs(req: budget_proposal.ReimbursementRequest) -> bool:
+    print(f"Syncing request: {req} to Google Sheets")
     with NHSGoogleSheets("Reimbursements") as sheets:
         sheets.append_row("Reimbursements", req.to_row())
         reim_df = sheets.get_df("Reimbursements")
@@ -185,7 +183,7 @@ def sync_req_to_gs(req: budget_proposal.ReimbursementRequest) -> bool:
     with NHSGoogleSheets("Proposals") as sheets:
         prop_df = sheets.get_df("Proposals")
         p_row = prop_df[prop_df['PROP_ID'].astype(str) == str(req.propid)]
-    
+    print(f"Syncing Complete")
     # return send_email_for_proposal(p_row, subject='Not Implemented', email_content='Not Implemented')[1]==200
     return True # dummy for now
     
