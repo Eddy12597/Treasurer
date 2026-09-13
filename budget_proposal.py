@@ -3,6 +3,10 @@ from datetime import datetime
 from enum import Enum
 import re
 import json
+from pathlib import Path
+from PIL import Image, ImageOps
+import io
+import uuid
 
 EMAIL_RE = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
 
@@ -14,6 +18,18 @@ class EventType(Enum):
     SPORTS="SPORTS"
     THEME_BASED="THEME_BASED"
     OTHER="OTHER"
+
+def _escape_csv_field(field: str) -> str:
+        if not field:
+            return field
+        
+        needs_escape = any(char in field for char in [',', '"', '\n', '\r'])
+        
+        if needs_escape:
+            field = field.replace('"', '""')
+            return f'"{field}"'
+        
+        return field
 
 class BudgetProposal:
     last_prop_id=0
@@ -108,17 +124,6 @@ class BudgetProposal:
                 return json.dumps(value, ensure_ascii=False)
             return str(value)
         
-    def _escape_csv_field(self, field: str) -> str:
-        if not field:
-            return field
-        
-        needs_escape = any(char in field for char in [',', '"', '\n', '\r'])
-        
-        if needs_escape:
-            field = field.replace('"', '""')
-            return f'"{field}"'
-        
-        return field
 
     def to_row(self) -> list:
         fields = [
@@ -141,4 +146,45 @@ class BudgetProposal:
             "0"
         ]
         
-        return [self._escape_csv_field(field) for field in fields]
+        return [_escape_csv_field(field) for field in fields]
+
+# Do not link BudgetProposal and ReimbursementRequest yet. If the server needs anything between, query through the collection of each. Oh fuck. Just keep them separate.
+
+# Processes and holds image
+class ReimbursementReceiptImage:
+    
+    MIN_LONG_SIDE = 800
+    
+    def __init__(self, imagedata: bytes):
+        img = Image.open(io.BytesIO(imagedata))
+        img.load()
+        maxdim = max(img.size)
+        ratio = maxdim / self.MIN_LONG_SIDE
+        if ratio > 1:
+            img = img.resize(size=(int(img.size[0] / ratio), int(img.size[1] / ratio)))
+        self.img = img
+
+class ReimbursementRequest:
+    
+    def __init__(self,
+                 propid: int, itemname: str,
+                 receipts_paths: list[str | Path],
+                 notes: str = ""):
+        self.propid = propid
+        self.itemname = itemname       
+        self.receipts_paths = receipts_paths
+        self.notes = notes
+        self.images: list[ReimbursementReceiptImage] = []
+        for p in receipts_paths:
+            with open(p, 'rb') as pf:
+                self.images.append(ReimbursementReceiptImage(pf.read()))
+    
+    def to_row(self) -> list:
+        fields = [
+            str(self.propid),
+            self.itemname,
+            '0', # appstatus
+            self.notes
+        ]
+        return [_escape_csv_field(field) for field in fields]
+        

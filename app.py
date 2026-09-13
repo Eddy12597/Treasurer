@@ -15,6 +15,10 @@ import hashlib
 import threading
 from queue import Queue
 # from api_send_email import send_email
+from pathlib import Path
+import base64
+import uuid
+import re
 
 if 'win' not in sys.platform:
     load_dotenv(dotenv_path="/home/eddy12598/Treasurer/.env")
@@ -142,6 +146,47 @@ def index():
     version_info = get_version_info()
     return f"Backend is running! Use /submit-budget-proposal to submit.\n\n{version_info}"
 
+# keep as log, pass around file names, maybe move this to the main file and never touch in util files
+STORAGE = Path('./STORAGE')
+def new_path(orig_fn: str) -> Path:
+    ext = Path(orig_fn).suffix.lower()
+    return STORAGE / f'{uuid.uuid4().hex}{ext}'
+
+@app.route('/request-reimbursement', methods=['POST'])
+def handle_request_reimbursement():
+    try:
+        data = request.get_json()
+        paths = []
+        for img in data['images']:
+            if isinstance(img, str) and "," in img:
+                img = img.split(",", 1)[1]  # strip data URL prefix
+            img_bytes = base64.b64decode(img)
+            with open(p := new_path(data['filename']), 'wb') as f:
+                f.write(img_bytes)
+            paths.append(p)
+        req = budget_proposal.ReimbursementRequest(data['propid'], data['itemname'], paths)
+        if sync_req_to_gs(req):
+            return "ok", 200
+    except (KeyError, TypeError, ValueError) as e:
+        return f"Bad Request: {e}", 400
+    finally:
+        return f"Server Error in Reimbursement Request", 500
+
+def sync_req_to_gs(req: budget_proposal.ReimbursementRequest) -> bool:
+    with NHSGoogleSheets("Reimbursements") as sheets:
+        sheets.append_row("Reimbursements", req.to_row())
+        reim_df = sheets.get_df("Reimbursements")
+        row = reim_df.iloc[-1].fillna("__ERROR__")
+    with NHSGoogleSheets("Proposals") as sheets:
+        prop_df = sheets.get_df("Proposals")
+        p_row = prop_df[prop_df['PROP_ID'].astype(str) == str(req.propid)]
+    
+    # return send_email_for_proposal(p_row, subject='Not Implemented', email_content='Not Implemented')[1]==200
+    return True # dummy for now
+    
+
+    
+
 @app.route('/submit-budget-proposal', methods=['POST'])
 def handle_submit_budget_proposal():
     data = request.get_json()
@@ -154,6 +199,10 @@ def handle_submit_budget_proposal():
         proposals_df = sheets.get_df("Proposals")
         row = proposals_df.iloc[-1].fillna("__ERROR__")
     
+    ret = send_email_for_proposal(row)
+    return ret
+
+def send_email_for_proposal(row, subject="BIPH NHS Budget Proposal Confirmation", email_content: str | None = None):
     recipient = row["contact_email"]
     name = row["event_chair"]
     propid = row["PROP_ID"]
@@ -187,10 +236,11 @@ def handle_submit_budget_proposal():
     reimbursement_contact = row["reimbursement_contact"]
     
     try:
-        email_content = get_email_body(name, propid, event_name, event_chair, event_start_date, 
-                                       event_type, itemized_budget, expected_revenue, 
-                                       estimated_attendance, vendors_suppliers, reimbursement_contact)
-        status, code = send_email(recipient, name, "BIPH NHS Budget Proposal Confirmation", email_content)
+        if email_content is None:
+            email_content = get_email_body(name, propid, event_name, event_chair, event_start_date, 
+                                        event_type, itemized_budget, expected_revenue, 
+                                        estimated_attendance, vendors_suppliers, reimbursement_contact)
+        status, code = send_email(recipient, email_content, subject=subject)
         return status, code
     except Exception as e:
         import traceback
