@@ -171,6 +171,14 @@ def handle_request_reimbursement():
         print(f"Bad Request: {e}")
         return f"Bad Request: {e}", 400
     except Exception as ex:
+        import traceback
+        traceback.print_exc() 
+        print(f"type: {type(ex).__name__}")
+        print(f"repr: {ex!r}")
+        if getattr(ex, "response", None) is not None:
+            print(f"status: {ex.response.status_code}")
+            print(f"body:   {ex.response.text[:2000]}")  # what Google actually said
+            print(f"url:    {ex.response.url}")
         print(f"Server Error: {ex}")
         return f"Server Error in Reimbursement Request", 500
 
