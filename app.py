@@ -162,7 +162,7 @@ def handle_request_reimbursement():
             if isinstance(img, str) and "," in img:
                 img = img.split(",", 1)[1]  # strip data URL prefix
             img_bytes = base64.b64decode(img)
-            with open(p := new_path(data['filenames'][i]), 'wb') as f:
+            with open(str(p := new_path(data['filenames'][i])), 'wb') as f:
                 f.write(img_bytes)
             paths.append(p)
         req = budget_proposal.ReimbursementRequest(data['propid'], data['itemname'], paths, data['notes'])
