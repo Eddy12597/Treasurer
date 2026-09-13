@@ -144,7 +144,7 @@ def get_email_body(name: str, propid: str, event_name: str, event_chair: str, ev
 @app.route('/')
 def index():
     version_info = get_version_info()
-    return f"Backend is running! Use /submit-budget-proposal to submit.\n\n{version_info}"
+    return f"Backend is running! Use /submit-budget-proposal to submit.<p>{version_info}"
 
 # keep as log, pass around file names, maybe move this to the main file and never touch in util files
 STORAGE = Path('./STORAGE')
@@ -157,6 +157,7 @@ def handle_request_reimbursement():
     try:
         data = request.get_json()
         paths = []
+        print(f"Length of Images: {len(data['images'])}")
         for img in data['images']:
             if isinstance(img, str) and "," in img:
                 img = img.split(",", 1)[1]  # strip data URL prefix
@@ -164,13 +165,17 @@ def handle_request_reimbursement():
             with open(p := new_path(data['filename']), 'wb') as f:
                 f.write(img_bytes)
             paths.append(p)
-        req = budget_proposal.ReimbursementRequest(data['propid'], data['itemname'], paths)
+        req = budget_proposal.ReimbursementRequest(data['propid'], data['itemname'], paths, data['notes'])
         if sync_req_to_gs(req):
             return "ok", 200
     except (KeyError, TypeError, ValueError) as e:
+        print(f"Bad Request: {e}")
         return f"Bad Request: {e}", 400
-    finally:
+    except Exception as ex:
+        print(f"Server Error: {ex}")
         return f"Server Error in Reimbursement Request", 500
+    finally:
+        return "Server Error", 500
 
 def sync_req_to_gs(req: budget_proposal.ReimbursementRequest) -> bool:
     with NHSGoogleSheets("Reimbursements") as sheets:

@@ -153,7 +153,7 @@ class BudgetProposal:
 # Processes and holds image
 class ReimbursementReceiptImage:
     
-    MIN_LONG_SIDE = 800
+    MIN_LONG_SIDE = 1000
     
     def __init__(self, imagedata: bytes):
         img = Image.open(io.BytesIO(imagedata))
