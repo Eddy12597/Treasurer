@@ -158,11 +158,11 @@ def handle_request_reimbursement():
         data = request.get_json()
         paths = []
         print(f"Length of Images: {len(data['images'])}")
-        for img in data['images']:
+        for i, img in enumerate(data['images']):
             if isinstance(img, str) and "," in img:
                 img = img.split(",", 1)[1]  # strip data URL prefix
             img_bytes = base64.b64decode(img)
-            with open(p := new_path(data['filename']), 'wb') as f:
+            with open(p := new_path(data['filenames'][i]), 'wb') as f:
                 f.write(img_bytes)
             paths.append(p)
         req = budget_proposal.ReimbursementRequest(data['propid'], data['itemname'], paths, data['notes'])
