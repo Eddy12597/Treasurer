@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import budget_proposal
 from version import get_version_info
+from functools import wraps
 from contextman import NHSGoogleSheets
 from hashlib import sha256
 from dotenv import load_dotenv
@@ -147,7 +148,38 @@ def index():
     version_info = get_version_info()
     return f"Backend is running! Use /submit-budget-proposal to submit.<p>{version_info}"
 
+REQUIRE_API_KEY=False
+VALID_API_KEYS={}
 
+def require_api_key(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        # If enforcement is off, skip verification entirely
+        if not REQUIRE_API_KEY:
+            return f(*args, **kwargs)
+
+        # Try both header styles so you're flexible later
+        api_key = (
+            request.headers.get("X-API-Key")
+            or request.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+        )
+
+        if not api_key:
+            return jsonify({"error": "API key required"}), 401
+
+        if api_key not in VALID_API_KEYS:
+            return jsonify({"error": "Invalid API key"}), 403
+
+        # Optional: attach identity to the request for logging/rate-limiting
+        request.api_client = VALID_API_KEYS[api_key]
+
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/api/logs', methods=['GET'])
+@require_api_key
+def api_logs():
+    return get_logs() # ( { "data": data }, 200 )
     
 
 @app.route('/request-reimbursement', methods=['POST'])
@@ -177,9 +209,9 @@ def handle_request_reimbursement():
         print(f"type: {type(ex).__name__}")
         print(f"repr: {ex!r}")
         if getattr(ex, "response", None) is not None:
-            print(f"status: {ex.response.status_code}")
-            print(f"body:   {ex.response.text[:2000]}")  # what Google actually said
-            print(f"url:    {ex.response.url}")
+            print(f"status: {ex.response.status_code}") # type: ignore
+            print(f"body:   {ex.response.text[:2000]}") # type: ignore # what Google actually said
+            print(f"url:    {ex.response.url}") # type: ignore
         print(f"Server Error: {ex}")
         return f"Server Error in Reimbursement Request", 500
 
@@ -196,7 +228,7 @@ def sync_req_to_gs(req: budget_proposal.ReimbursementRequest) -> bool:
     return True # dummy for now
     
 
-    
+
 
 @app.route('/submit-budget-proposal', methods=['POST'])
 def handle_submit_budget_proposal():
@@ -210,8 +242,13 @@ def handle_submit_budget_proposal():
         proposals_df = sheets.get_df("Proposals")
         row = proposals_df.iloc[-1].fillna("__ERROR__")
     
-    ret = send_email_for_proposal(row)
-    return ret
+    # ret = send_email_for_proposal(row)
+    
+    # return ret
+    
+    propid = row['PROP_ID']
+    
+    return str(propid), 200
 
 def send_email_for_proposal(row, subject="BIPH NHS Budget Proposal Confirmation", email_content: str | None = None):
     recipient = row["contact_email"]
