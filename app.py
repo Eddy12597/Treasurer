@@ -1,8 +1,9 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, make_response, request
 from flask_cors import CORS
 import budget_proposal
 from version import get_version_info
 from functools import wraps
+from collections import deque
 from contextman import NHSGoogleSheets
 from hashlib import sha256
 from dotenv import load_dotenv
@@ -14,6 +15,8 @@ import json
 import sys
 import hashlib
 import threading
+import time
+from math import ceil
 from queue import Queue
 # from api_send_email import send_email
 from pathlib import Path
@@ -176,8 +179,61 @@ def require_api_key(f):
         return f(*args, **kwargs)
     return decorated
 
+
+def rate_limit(max_requests: int = 60, window_seconds: float = 60.0):
+    if max_requests < 1 or window_seconds <= 0:
+        raise ValueError("max_requests and window_seconds must be positive")
+
+    def decorator(f):
+        requests_by_client: dict[str, deque[float]] = {}
+        last_cleanup = 0.0
+        lock = threading.Lock()
+
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            nonlocal last_cleanup
+            now = time.monotonic()
+            cutoff = now - window_seconds
+            client_id = getattr(request, "api_client", None)
+            client_key = str(client_id) if client_id is not None else (request.remote_addr or "unknown")
+
+            with lock:
+                if now - last_cleanup >= window_seconds:
+                    for key, timestamps in list(requests_by_client.items()):
+                        while timestamps and timestamps[0] <= cutoff:
+                            timestamps.popleft()
+                        if not timestamps:
+                            del requests_by_client[key]
+                    last_cleanup = now
+
+                timestamps = requests_by_client.setdefault(client_key, deque())
+                while timestamps and timestamps[0] <= cutoff:
+                    timestamps.popleft()
+
+                if len(timestamps) >= max_requests:
+                    retry_after = max(1, ceil(timestamps[0] + window_seconds - now))
+                    return jsonify({"error": "Rate limit exceeded"}), 429, {
+                        "Retry-After": str(retry_after),
+                        "X-RateLimit-Limit": str(max_requests),
+                        "X-RateLimit-Remaining": "0",
+                    }
+
+                timestamps.append(now)
+                remaining = max_requests - len(timestamps)
+
+            response = make_response(f(*args, **kwargs))
+            response.headers["X-RateLimit-Limit"] = str(max_requests)
+            response.headers["X-RateLimit-Remaining"] = str(remaining)
+            return response
+
+        return decorated
+
+    return decorator
+
+
 @app.route('/api/logs', methods=['GET'])
 @require_api_key
+@rate_limit(max_requests=60, window_seconds=60)
 def api_logs():
     return get_logs() # ( { "data": data }, 200 )
     
@@ -315,7 +371,6 @@ def stats():
         if salt is None:
             return "Failed to get Hash Salt", 500
         new_hash = sha256((data_string + salt).encode()).hexdigest()
-        
 """
 
 
