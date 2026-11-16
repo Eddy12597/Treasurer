@@ -151,8 +151,10 @@ def index():
     version_info = get_version_info()
     return f"Backend is running! Use /submit-budget-proposal to submit.<p>{version_info}"
 
-REQUIRE_API_KEY=False
-VALID_API_KEYS={}
+REQUIRE_API_KEY=True
+VALID_API_KEYS={
+    'public-api-key-v1': "public"
+}
 
 def require_api_key(f):
     @wraps(f)
@@ -374,12 +376,14 @@ def stats():
 """
 
 
-@app.route("/get-logs", methods=['GET', 'POST'])
+@app.route("/get-logs", methods=['GET'])
 def get_logs():
     with NHSGoogleSheets("NHS Budget Proposals") as sheets:
         transactions_df = sheets.get_df("Transactions")
         # transactions_df["PrevHash"][0] = "0" * 64
         # transactions_df.loc[0, "PrevHash"] = "0" * 64
+        transactions_df = transactions_df[(transactions_df['Amount'] != '') & (transactions_df['Year'] != '')]
+        # print(transactions_df.tail(5))
         data = transactions_df.to_dict(orient="records")
     return {
         "data": data
